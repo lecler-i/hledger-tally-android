@@ -6,6 +6,13 @@ entries and see a quick balance/expenses overview on the go. It talks to the
 a custom reimplementation of the journal format — writes and reads always go
 through the actual parser.
 
+> [!NOTE]
+> This is a personal, vibecoded project — built for my own use, not
+> maintained as a product. **No support is given**: no issue triage, no
+> feature requests, no guaranteed fixes. If it doesn't do what you need,
+> fork it and point an AI coding agent at it; the codebase is small and
+> straightforward enough that this works well.
+
 ## How it works
 
 - **Add Entry**: date (native Material3 date picker), amount, payee, expense
