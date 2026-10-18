@@ -26,7 +26,7 @@ jobs:
         uses: android-actions/setup-android@v4
 
       - name: Install required SDK platform & build-tools
-        run: sdkmanager "platforms;android-37" "build-tools;37.0.0"
+        run: sdkmanager "platforms;android-37.2" "build-tools;37.0.0"
 
       - name: Build release APK
         run: ./gradlew assembleRelease --no-daemon
