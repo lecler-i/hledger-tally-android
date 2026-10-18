@@ -11,6 +11,8 @@ import androidx.compose.runtime.setValue
  * is a shell string Termux's `sh` interprets directly (so `~` expansion works) — kept
  * unquoted wherever a command is built with it, deliberately.
  */
+enum class ThemeMode { SYSTEM, LIGHT, DARK }
+
 object AppSettings {
     private const val PREFS_NAME = "hledgerbs_settings"
     private const val KEY_MANUAL_JOURNAL_PATH = "manual_journal_path"
@@ -18,12 +20,15 @@ object AppSettings {
     private const val KEY_SHOW_IN_CURRENCY = "show_in_currency"
     private const val KEY_LAST_USED_ACCOUNT = "last_used_account"
     private const val KEY_EXPENSE_ACCOUNTS = "expense_accounts"
+    private const val KEY_THEME_MODE = "theme_mode"
 
     const val DEFAULT_MANUAL_JOURNAL_PATH = "~/storage/finance/journals/phone-manual.journal"
     const val DEFAULT_CURRENCY = "INR"
     const val DEFAULT_SHOW_IN_CURRENCY = "EUR"
 
     var manualJournalPath by mutableStateOf(DEFAULT_MANUAL_JOURNAL_PATH)
+        private set
+    var themeMode by mutableStateOf(ThemeMode.SYSTEM)
         private set
     var defaultCurrency by mutableStateOf(DEFAULT_CURRENCY)
         private set
@@ -73,6 +78,14 @@ object AppSettings {
             ?.lines()
             ?.filter { it.isNotBlank() }
             ?: emptyList()
+        themeMode = p.getString(KEY_THEME_MODE, null)
+            ?.let { runCatching { ThemeMode.valueOf(it) }.getOrNull() }
+            ?: ThemeMode.SYSTEM
+    }
+
+    fun updateThemeMode(mode: ThemeMode) {
+        themeMode = mode
+        prefs?.edit()?.putString(KEY_THEME_MODE, mode.name)?.apply()
     }
 
     fun updateManualJournalPath(path: String) {

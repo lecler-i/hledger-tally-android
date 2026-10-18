@@ -40,6 +40,7 @@ import dev.ghjkl.tally.ui.RUN_COMMAND_PERMISSION
 import dev.ghjkl.tally.ui.screens.AddEntryScreen
 import dev.ghjkl.tally.ui.screens.ConfigScreen
 import dev.ghjkl.tally.ui.screens.InfosScreen
+import dev.ghjkl.tally.ui.theme.TallyTheme
 import kotlinx.coroutines.launch
 
 private enum class Screen(val label: String) {
@@ -54,7 +55,7 @@ class MainActivity : ComponentActivity() {
         AppSettings.init(this)
         enableEdgeToEdge()
         setContent {
-            MaterialTheme {
+            TallyTheme {
                 HledgerApp()
             }
         }

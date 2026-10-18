@@ -9,6 +9,9 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
@@ -22,6 +25,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.ghjkl.tally.data.AppSettings
+import dev.ghjkl.tally.data.ThemeMode
 import dev.ghjkl.tally.termux.refreshExpenseAccounts
 import dev.ghjkl.tally.ui.rememberRunCommandPermission
 import kotlinx.coroutines.launch
@@ -33,6 +37,7 @@ fun ConfigScreen() {
     val scope = rememberCoroutineScope()
     val permission = rememberRunCommandPermission()
 
+    var themeMode by remember { mutableStateOf(AppSettings.themeMode) }
     var path by remember { mutableStateOf(AppSettings.manualJournalPath) }
     var currency by remember { mutableStateOf(AppSettings.defaultCurrency) }
     var showInCurrency by remember { mutableStateOf(AppSettings.showInCurrency) }
@@ -70,6 +75,29 @@ fun ConfigScreen() {
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
+            Text("Theme", fontSize = 13.sp)
+            SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+                ThemeMode.entries.forEachIndexed { index, mode ->
+                    SegmentedButton(
+                        selected = themeMode == mode,
+                        onClick = {
+                            themeMode = mode
+                            AppSettings.updateThemeMode(mode)
+                        },
+                        shape = SegmentedButtonDefaults.itemShape(index, ThemeMode.entries.size),
+                        label = {
+                            Text(
+                                when (mode) {
+                                    ThemeMode.SYSTEM -> "Follow system"
+                                    ThemeMode.LIGHT -> "Light"
+                                    ThemeMode.DARK -> "Dark"
+                                },
+                            )
+                        },
+                    )
+                }
+            }
+
             Text("Manual entry journal path", fontSize = 13.sp)
             OutlinedTextField(
                 value = path,
