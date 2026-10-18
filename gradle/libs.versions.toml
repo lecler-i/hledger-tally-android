@@ -1,0 +1,29 @@
+[versions]
+# Current as of this writing (Oct 2026) — open the project in the latest
+# Android Studio and accept any "Upgrade Assistant" prompts, it will bump
+# these to whatever is actually newest at the time you build.
+# AGP 9.x has built-in Kotlin support, so there's no separate kotlin-android
+# plugin/version anymore — "kotlin" here is only used to pin the Compose
+# compiler plugin version (it must track AGP's bundled KGP, 2.3.0+ for AGP 9).
+agp = "9.4.1"
+kotlin = "2.3.0"
+coreKtx = "1.15.0"
+activityCompose = "1.10.0"
+composeBom = "2026.09.00"
+commonsText = "1.15.0"
+
+[libraries]
+androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
+androidx-activity-compose = { group = "androidx.activity", name = "activity-compose", version.ref = "activityCompose" }
+compose-bom = { group = "androidx.compose", name = "compose-bom", version.ref = "composeBom" }
+compose-ui = { group = "androidx.compose.ui", name = "ui" }
+compose-ui-graphics = { group = "androidx.compose.ui", name = "ui-graphics" }
+compose-ui-tooling = { group = "androidx.compose.ui", name = "ui-tooling" }
+compose-ui-tooling-preview = { group = "androidx.compose.ui", name = "ui-tooling-preview" }
+compose-material3 = { group = "androidx.compose.material3", name = "material3" }
+compose-material-icons-core = { group = "androidx.compose.material", name = "material-icons-core" }
+commons-text = { group = "org.apache.commons", name = "commons-text", version.ref = "commonsText" }
+
+[plugins]
+android-application = { id = "com.android.application", version.ref = "agp" }
+kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
