@@ -19,6 +19,15 @@ android {
         compose = true
     }
 
+    buildTypes {
+        // No production keystore for this personal project — sign release builds with
+        // the same auto-generated debug key so CI can produce an installable,
+        // non-debuggable APK without managing signing secrets.
+        release {
+            signingConfig = signingConfigs.getByName("debug")
+        }
+    }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17

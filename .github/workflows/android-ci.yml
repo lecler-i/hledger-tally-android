@@ -28,14 +28,14 @@ jobs:
       - name: Install required SDK platform & build-tools
         run: sdkmanager "platforms;android-37" "build-tools;37.0.0"
 
-      - name: Build debug APK
-        run: ./gradlew assembleDebug --no-daemon
+      - name: Build release APK
+        run: ./gradlew assembleRelease --no-daemon
 
       - name: Upload APK as workflow artifact
         uses: actions/upload-artifact@v4
         with:
-          name: app-debug
-          path: app/build/outputs/apk/debug/*.apk
+          name: app-release
+          path: app/build/outputs/apk/release/*.apk
 
       # Releases are only published on pushes (not pull_request runs) — PRs from
       # forks don't get write access to GITHUB_TOKEN by default, so this step
@@ -64,4 +64,4 @@ jobs:
           tag_name: ${{ steps.release_tag.outputs.tag }}
           name: ${{ steps.release_tag.outputs.name }}
           prerelease: ${{ steps.release_tag.outputs.prerelease }}
-          files: app/build/outputs/apk/debug/*.apk
+          files: app/build/outputs/apk/release/*.apk
