@@ -7,6 +7,8 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -29,8 +31,37 @@ jobs:
       - name: Build debug APK
         run: ./gradlew assembleDebug --no-daemon
 
-      - name: Upload APK
+      - name: Upload APK as workflow artifact
         uses: actions/upload-artifact@v4
         with:
           name: app-debug
           path: app/build/outputs/apk/debug/*.apk
+
+      # Releases are only published on pushes (not pull_request runs) — PRs from
+      # forks don't get write access to GITHUB_TOKEN by default, so this step
+      # would just fail there for no benefit; the artifact upload above already
+      # covers "did it build" validation for PRs.
+      - name: Determine release tag
+        if: github.event_name == 'push'
+        id: release_tag
+        run: |
+          VERSION=$(grep -oP 'versionName\s*=\s*"\K[^"]+' app/build.gradle.kts)
+          if [ "${{ github.ref }}" = "refs/heads/main" ]; then
+            echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
+            echo "name=v$VERSION" >> "$GITHUB_OUTPUT"
+            echo "prerelease=false" >> "$GITHUB_OUTPUT"
+          else
+            SLUG=$(echo "${{ github.ref_name }}" | tr -c 'a-zA-Z0-9' '-')
+            echo "tag=dev-$SLUG" >> "$GITHUB_OUTPUT"
+            echo "name=Dev build: ${{ github.ref_name }} @ ${GITHUB_SHA:0:7}" >> "$GITHUB_OUTPUT"
+            echo "prerelease=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Publish to Releases
+        if: github.event_name == 'push'
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ steps.release_tag.outputs.tag }}
+          name: ${{ steps.release_tag.outputs.name }}
+          prerelease: ${{ steps.release_tag.outputs.prerelease }}
+          files: app/build/outputs/apk/debug/*.apk
