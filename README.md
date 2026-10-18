@@ -78,3 +78,7 @@ app/src/main/java/dev/ghjkl/tally/
 - Depends on Termux staying installed with `RUN_COMMAND` permission granted;
   if Termux's result-bundle extra keys/format ever change again in a future
   release, the parsing in `TermuxRunner.kt` may need updating to match.
+
+## License
+
+[Unlicense](LICENSE) — public domain. Do whatever you want with it.
