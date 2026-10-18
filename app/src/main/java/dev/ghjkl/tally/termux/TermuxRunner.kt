@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.Intent
 import android.os.IBinder
 import android.util.Log
+import androidx.core.content.ContextCompat
 import kotlinx.coroutines.CompletableDeferred
 
 private const val TAG = "HledgerBS"
@@ -59,7 +60,11 @@ object TermuxRunner {
             }
         }
         Log.d(TAG, "sending RUN_COMMAND: $executable ${args.joinToString(" ")}")
-        app.startService(runIntent)
+        // Termux's RunCommandService promotes itself to a foreground service right
+        // after onStartCommand(); startService() doesn't get the background-start
+        // exemption that requires, so Android blocks it with
+        // BackgroundServiceStartNotAllowedException once Termux itself isn't foreground.
+        ContextCompat.startForegroundService(app, runIntent)
 
         val result = deferred.await()
         Log.d(
