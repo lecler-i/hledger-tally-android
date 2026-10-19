@@ -45,14 +45,16 @@ through the actual parser.
    under your synced storage (e.g. a Syncthing-shared folder), so entries
    added on the phone show up back on your other machines.
 
-## Opening the project
+## Building
 
-Open this folder in the latest Android Studio ("Open" → select this
-directory). Dependency versions in `gradle/libs.versions.toml` are current as
-of writing; accept any "Upgrade Assistant" prompts Android Studio offers.
+Open this folder in Android Studio, or run `./gradlew assembleRelease` with a
+JDK 17+ and the Android SDK. Versions live in `gradle/libs.versions.toml`.
 
-Building from the command line requires the Android SDK (`compileSdk`/
-`-X 37` tooling) and a JDK 17; see `app/build.gradle.kts` for exact versions.
+Release builds are signed with the keystore in `$TALLY_KEYSTORE` (password in
+`$TALLY_KEYSTORE_PASSWORD`, key alias `tally`), or with the debug key if unset.
+CI decodes it from the `TALLY_KEYSTORE_BASE64` and `TALLY_KEYSTORE_PASSWORD`
+repository secrets. Pushes to `main` publish a release when `versionName`
+changes; other branches publish a `dev-<branch>` prerelease.
 
 ## Project layout
 
