@@ -14,17 +14,19 @@ android {
         versionName = "0.2.0"
     }
 
+    signingConfigs {
+        create("release") {
+            // The keystore file is the secret; its password isn't.
+            storeFile = file("release.p12")
+            storePassword = "hledger-tally"
+            keyAlias = "hledger-tally"
+            keyPassword = "hledger-tally"
+        }
+    }
+
     buildTypes {
         release {
-            // CI signs with the release keystore; local builds without one use the debug key.
-            signingConfig = System.getenv("TALLY_KEYSTORE")?.let { keystore ->
-                signingConfigs.create("release") {
-                    storeFile = file(keystore)
-                    storePassword = System.getenv("TALLY_KEYSTORE_PASSWORD")
-                    keyAlias = "tally"
-                    keyPassword = System.getenv("TALLY_KEYSTORE_PASSWORD")
-                }
-            } ?: signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.getByName("release")
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"))

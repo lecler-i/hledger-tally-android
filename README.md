@@ -50,11 +50,10 @@ through the actual parser.
 Open this folder in Android Studio, or run `./gradlew assembleRelease` with a
 JDK 17+ and the Android SDK. Versions live in `gradle/libs.versions.toml`.
 
-Release builds are signed with the keystore in `$TALLY_KEYSTORE` (password in
-`$TALLY_KEYSTORE_PASSWORD`, key alias `tally`), or with the debug key if unset.
-CI decodes it from the `TALLY_KEYSTORE_BASE64` and `TALLY_KEYSTORE_PASSWORD`
-repository secrets. Pushes to `main` publish a release when `versionName`
-changes; other branches publish a `dev-<branch>` prerelease.
+Release builds are signed with `app/release.p12` (gitignored). CI decodes it
+from the base64 `HLEDGER_TALLY_KEYSTORE_BASE64` repository secret. Pushes to
+`main` publish a release when `versionName` changes; other branches publish a
+`dev-<branch>` prerelease.
 
 ## Project layout
 

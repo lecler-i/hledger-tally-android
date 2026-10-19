@@ -19,21 +19,12 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v6
 
-      - name: Decode signing key
-        env:
-          KEYSTORE_BASE64: ${{ secrets.TALLY_KEYSTORE_BASE64 }}
-        run: |
-          if [ -z "$KEYSTORE_BASE64" ]; then
-            echo "::warning::TALLY_KEYSTORE_BASE64 is not set, signing with a throwaway debug key"
-            exit 0
-          fi
-          echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/tally.p12"
-          echo "TALLY_KEYSTORE=$RUNNER_TEMP/tally.p12" >> "$GITHUB_ENV"
-
       - name: Build release APK
-        run: ./gradlew assembleRelease
+        run: |
+          echo "$KEYSTORE_BASE64" | base64 -d > app/release.p12
+          ./gradlew assembleRelease
         env:
-          TALLY_KEYSTORE_PASSWORD: ${{ secrets.TALLY_KEYSTORE_PASSWORD }}
+          KEYSTORE_BASE64: ${{ secrets.HLEDGER_TALLY_KEYSTORE_BASE64 }}
 
       - uses: actions/upload-artifact@v7
         with:
