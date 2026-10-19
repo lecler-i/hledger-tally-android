@@ -52,11 +52,14 @@ suspend fun refreshExpenseAccounts(context: Context): TermuxResult {
     return result
 }
 
-// No trailing blank line: Termux's stdin already adds one, which separates entries.
-fun formatEntry(date: LocalDate, payee: String, account: String, amount: BigDecimal, currency: String) =
-    "$date $payee\n" +
-        "    $CASH_ACCOUNT  ${amount.negate().toPlainString()} $currency\n" +
-        "    $account  ${amount.toPlainString()} $currency\n"
+// Aligned like `hledger print`. No trailing blank line: Termux's stdin already adds one.
+fun formatEntry(date: LocalDate, payee: String, account: String, amount: BigDecimal, currency: String): String {
+    val postings = listOf(CASH_ACCOUNT to amount.negate().toPlainString(), account to amount.toPlainString())
+    val accountWidth = postings.maxOf { it.first.length } + 2
+    val amountWidth = postings.maxOf { it.second.length }
+    val lines = postings.map { (name, value) -> "    ${name.padEnd(accountWidth)}${value.padStart(amountWidth)} $currency" }
+    return "$date $payee\n" + lines.joinToString("\n") + "\n"
+}
 
 suspend fun appendEntry(context: Context, entry: String) =
     shell(context, "cat >> ${AppSettings.manualJournalPath}", stdin = entry)
