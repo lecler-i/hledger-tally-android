@@ -20,6 +20,7 @@ private fun monthExpensesArgs(begin: LocalDate, end: LocalDate, depth: Int): Lis
     add("-e")
     add(end.toString())
     add("Expenses")
+    AppSettings.excludedExpenseAccounts.forEach { add("not:acct:$it") }
     add("--depth")
     add(depth.toString())
     // --flat: makes -S's sort a true global ranking across all rows, not just within

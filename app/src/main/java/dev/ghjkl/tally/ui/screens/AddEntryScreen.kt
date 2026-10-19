@@ -46,28 +46,13 @@ import androidx.compose.ui.unit.dp
 import dev.ghjkl.tally.data.AppSettings
 import dev.ghjkl.tally.termux.SH_PATH
 import dev.ghjkl.tally.termux.TermuxRunner
+import dev.ghjkl.tally.ui.rankByFuzzyScore
 import dev.ghjkl.tally.ui.rememberRunCommandPermission
 import kotlinx.coroutines.launch
-import org.apache.commons.text.similarity.FuzzyScore
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneOffset
 import java.util.Locale
-
-// Same scoring approach as Sublime Text/Atom/IntelliJ's fuzzy matchers: points per
-// matched character, bonus for consecutive runs — so "rent" ranks "Expenses:Rent"
-// far above a scattered match buried in "Expenses:Leisure:Computer:3dprint".
-private val fuzzyScore = FuzzyScore(Locale.ENGLISH)
-
-private fun rankByFuzzyScore(query: String, candidates: List<String>, limit: Int): List<String> {
-    if (query.isBlank()) return candidates.take(limit)
-    return candidates
-        .map { it to fuzzyScore.fuzzyScore(it, query) }
-        .filter { (_, score) -> score > 0 }
-        .sortedByDescending { (_, score) -> score }
-        .take(limit)
-        .map { (account, _) -> account }
-}
 
 // DatePicker operates in UTC internally to avoid timezone date-shifting — convert
 // through ZoneOffset.UTC specifically, not the system default zone, both ways.

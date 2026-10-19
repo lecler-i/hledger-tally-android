@@ -20,6 +20,7 @@ object AppSettings {
     private const val KEY_SHOW_IN_CURRENCY = "show_in_currency"
     private const val KEY_LAST_USED_ACCOUNT = "last_used_account"
     private const val KEY_EXPENSE_ACCOUNTS = "expense_accounts"
+    private const val KEY_EXCLUDED_EXPENSE_ACCOUNTS = "excluded_expense_accounts"
     private const val KEY_THEME_MODE = "theme_mode"
 
     const val DEFAULT_MANUAL_JOURNAL_PATH = "~/storage/finance/journals/phone-manual.journal"
@@ -39,6 +40,10 @@ object AppSettings {
     var lastUsedAccount by mutableStateOf("")
         private set
     var expenseAccounts by mutableStateOf<List<String>>(emptyList())
+        private set
+    // Account prefixes to hide from the Infos page's Expenses breakdowns (e.g. Taxes) —
+    // excluded via "not:acct:" in the balance queries, not removed from the ledger itself.
+    var excludedExpenseAccounts by mutableStateOf<List<String>>(emptyList())
         private set
 
     // Not persisted — always re-fetched fresh (kicked off once at app start, and again on
@@ -78,6 +83,10 @@ object AppSettings {
             ?.lines()
             ?.filter { it.isNotBlank() }
             ?: emptyList()
+        excludedExpenseAccounts = p.getString(KEY_EXCLUDED_EXPENSE_ACCOUNTS, "")
+            ?.lines()
+            ?.filter { it.isNotBlank() }
+            ?: emptyList()
         themeMode = p.getString(KEY_THEME_MODE, null)
             ?.let { runCatching { ThemeMode.valueOf(it) }.getOrNull() }
             ?: ThemeMode.SYSTEM
@@ -111,5 +120,15 @@ object AppSettings {
     fun updateExpenseAccounts(accounts: List<String>) {
         expenseAccounts = accounts
         prefs?.edit()?.putString(KEY_EXPENSE_ACCOUNTS, accounts.joinToString("\n"))?.apply()
+    }
+
+    fun toggleExcludedExpenseAccount(account: String) {
+        val updated = if (account in excludedExpenseAccounts) {
+            excludedExpenseAccounts - account
+        } else {
+            excludedExpenseAccounts + account
+        }
+        excludedExpenseAccounts = updated
+        prefs?.edit()?.putString(KEY_EXCLUDED_EXPENSE_ACCOUNTS, updated.joinToString("\n"))?.apply()
     }
 }

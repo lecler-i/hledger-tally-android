@@ -2,12 +2,23 @@ package dev.ghjkl.tally.ui.screens
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExposedDropdownMenuAnchorType
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.Icon
+import androidx.compose.material3.InputChip
+import androidx.compose.material3.InputChipDefaults
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
@@ -27,10 +38,25 @@ import androidx.compose.ui.unit.sp
 import dev.ghjkl.tally.data.AppSettings
 import dev.ghjkl.tally.data.ThemeMode
 import dev.ghjkl.tally.termux.refreshExpenseAccounts
+import dev.ghjkl.tally.ui.rankByFuzzyScore
 import dev.ghjkl.tally.ui.rememberRunCommandPermission
 import kotlinx.coroutines.launch
 
-@OptIn(ExperimentalMaterial3Api::class)
+// hledger's "accounts" list only contains leaves actually posted to (e.g.
+// Expenses:Taxes:France) — derive every ancestor prefix (Expenses, Expenses:Taxes, …)
+// too, so a whole subtree like Expenses:Taxes can be picked for exclusion in one go.
+private fun withAncestors(accounts: List<String>): List<String> {
+    val result = LinkedHashSet<String>()
+    for (account in accounts) {
+        val parts = account.split(":")
+        for (depth in 1..parts.size) {
+            result.add(parts.subList(0, depth).joinToString(":"))
+        }
+    }
+    return result.toList()
+}
+
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun ConfigScreen() {
     val context = LocalContext.current
@@ -43,6 +69,13 @@ fun ConfigScreen() {
     var showInCurrency by remember { mutableStateOf(AppSettings.showInCurrency) }
     var isRefreshing by remember { mutableStateOf(false) }
     var refreshStatus by remember { mutableStateOf("") }
+    var excludeQuery by remember { mutableStateOf("") }
+    var excludeMenuExpanded by remember { mutableStateOf(false) }
+
+    val excludeMatches = remember(excludeQuery, AppSettings.expenseAccounts, AppSettings.excludedExpenseAccounts) {
+        rankByFuzzyScore(excludeQuery, withAncestors(AppSettings.expenseAccounts), limit = 8)
+            .filter { it !in AppSettings.excludedExpenseAccounts }
+    }
 
     fun refresh() {
         if (!permission.granted) {
@@ -152,6 +185,63 @@ fun ConfigScreen() {
             if (refreshStatus.isNotBlank()) {
                 Text(refreshStatus, fontSize = 12.sp)
             }
+
+            Text("Hide from Expenses breakdown", fontSize = 13.sp)
+            ExposedDropdownMenuBox(
+                expanded = excludeMenuExpanded && excludeMatches.isNotEmpty(),
+                onExpandedChange = { excludeMenuExpanded = it },
+            ) {
+                OutlinedTextField(
+                    value = excludeQuery,
+                    onValueChange = {
+                        excludeQuery = it
+                        excludeMenuExpanded = true
+                    },
+                    label = { Text("Search account to hide") },
+                    singleLine = true,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .menuAnchor(ExposedDropdownMenuAnchorType.PrimaryEditable, enabled = true),
+                )
+                ExposedDropdownMenu(
+                    expanded = excludeMenuExpanded && excludeMatches.isNotEmpty(),
+                    onDismissRequest = { excludeMenuExpanded = false },
+                ) {
+                    excludeMatches.forEach { match ->
+                        DropdownMenuItem(
+                            text = { Text(match) },
+                            onClick = {
+                                AppSettings.toggleExcludedExpenseAccount(match)
+                                excludeQuery = ""
+                                excludeMenuExpanded = false
+                            },
+                        )
+                    }
+                }
+            }
+            if (AppSettings.excludedExpenseAccounts.isNotEmpty()) {
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    AppSettings.excludedExpenseAccounts.forEach { account ->
+                        InputChip(
+                            selected = false,
+                            onClick = { AppSettings.toggleExcludedExpenseAccount(account) },
+                            label = { Text(account.removePrefix("Expenses:")) },
+                            trailingIcon = {
+                                Icon(
+                                    Icons.Default.Close,
+                                    contentDescription = "Remove",
+                                    modifier = Modifier.size(InputChipDefaults.IconSize),
+                                )
+                            },
+                        )
+                    }
+                }
+            }
+            Text(
+                "Hidden accounts (e.g. Taxes) are excluded from the Infos page's " +
+                    "Expenses totals, not from the ledger itself. Tap a chip to unhide it.",
+                fontSize = 12.sp,
+            )
         }
     }
 }
