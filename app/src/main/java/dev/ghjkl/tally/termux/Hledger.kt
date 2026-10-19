@@ -2,6 +2,7 @@ package dev.ghjkl.tally.termux
 
 import android.content.Context
 import dev.ghjkl.tally.data.AppSettings
+import java.math.BigDecimal
 import java.time.LocalDate
 import java.time.YearMonth
 
@@ -52,8 +53,10 @@ suspend fun refreshExpenseAccounts(context: Context): TermuxResult {
 }
 
 // No trailing blank line: Termux's stdin already adds one, which separates entries.
-fun formatEntry(date: LocalDate, payee: String, account: String, amount: String, currency: String) =
-    "$date $payee\n    $account  $amount $currency\n    $CASH_ACCOUNT\n"
+fun formatEntry(date: LocalDate, payee: String, account: String, amount: BigDecimal, currency: String) =
+    "$date $payee\n" +
+        "    $CASH_ACCOUNT  ${amount.negate().toPlainString()} $currency\n" +
+        "    $account  ${amount.toPlainString()} $currency\n"
 
 suspend fun appendEntry(context: Context, entry: String) =
     shell(context, "cat >> ${AppSettings.manualJournalPath}", stdin = entry)

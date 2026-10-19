@@ -76,7 +76,7 @@ fun AddEntryScreen(snackbarHostState: SnackbarHostState) {
         focusManager.clearFocus()
         submitted = true
         if (!valid) return@runOrRequest
-        val entry = formatEntry(date, payee.trim(), resolvedAccount, parsedAmount.toPlainString(), currency.trim())
+        val entry = formatEntry(date, payee.trim(), resolvedAccount, parsedAmount, currency.trim())
         saving = true
         scope.launch {
             val result = appendEntry(context, entry)
