@@ -1,7 +1,8 @@
 [versions]
 agp = "9.4.1"
 # AGP 9 compiles Kotlin itself; this plugin's version sets the Kotlin version.
-kotlin = "2.4.21"
+# CodeQL 2.27's Kotlin extractor stops at 2.4.20: newer versions make its scan extract nothing.
+kotlin = "2.4.20"
 activityCompose = "1.13.0"
 composeBom = "2026.09.00"
 commonsText = "1.15.0"

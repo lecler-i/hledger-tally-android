@@ -50,7 +50,8 @@ through the actual parser.
 Open this folder in Android Studio, or run `./gradlew assembleRelease` with a
 JDK 17+ and the Android SDK. Versions live in `gradle/libs.versions.toml`.
 
-Release builds are signed with `app/release.p12` (gitignored). CI decodes it
+Release builds are signed with `app/release.p12` (gitignored), or left
+unsigned when it's missing. CI decodes it
 from the base64 `HLEDGER_TALLY_KEYSTORE_BASE64` repository secret. Pushes to
 `main` publish a release when `versionName` changes; other branches publish a
 `dev-<branch>` prerelease.
