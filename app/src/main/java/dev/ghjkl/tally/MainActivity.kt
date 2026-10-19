@@ -29,6 +29,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -44,6 +45,7 @@ import dev.ghjkl.tally.ui.screens.ConfigScreen
 import dev.ghjkl.tally.ui.screens.InfosScreen
 import dev.ghjkl.tally.ui.theme.TallyTheme
 import dev.ghjkl.tally.ui.theme.isAppInDarkTheme
+import kotlinx.coroutines.launch
 
 private enum class Screen(val label: String, val icon: ImageVector) {
     Infos("Infos", Icons.Default.Info),
@@ -73,6 +75,7 @@ private fun TallyApp() {
     var screen by rememberSaveable { mutableStateOf(Screen.AddEntry) }
     val snackbarHostState = remember { SnackbarHostState() }
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
 
     // Prefetch in the background, without asking for the permission on launch.
     LaunchedEffect(Unit) {
@@ -100,7 +103,11 @@ private fun TallyApp() {
         Box(modifier = Modifier.padding(padding).fillMaxSize()) {
             when (screen) {
                 Screen.Infos -> InfosScreen()
-                Screen.AddEntry -> AddEntryScreen(snackbarHostState)
+                Screen.AddEntry -> AddEntryScreen(
+                    snackbarHostState,
+                    // App-level scope, so switching to Infos doesn't cancel the refresh.
+                    onEntryAdded = { scope.launch { Infos.refresh(context) } },
+                )
                 Screen.Config -> ConfigScreen()
             }
         }

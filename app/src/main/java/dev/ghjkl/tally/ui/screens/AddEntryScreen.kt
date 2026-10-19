@@ -50,7 +50,7 @@ import java.time.LocalDate
 import java.time.ZoneOffset
 
 @Composable
-fun AddEntryScreen(snackbarHostState: SnackbarHostState) {
+fun AddEntryScreen(snackbarHostState: SnackbarHostState, onEntryAdded: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val permission = rememberRunCommandPermission()
@@ -92,7 +92,7 @@ fun AddEntryScreen(snackbarHostState: SnackbarHostState) {
             account = ""
             submitted = false
             error = ""
-            amountFocus.requestFocus()
+            onEntryAdded()
             snackbarHostState.showSnackbar("Entry added")
         }
     }
