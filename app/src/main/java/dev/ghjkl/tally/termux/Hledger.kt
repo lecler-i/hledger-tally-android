@@ -52,13 +52,13 @@ suspend fun refreshExpenseAccounts(context: Context): TermuxResult {
     return result
 }
 
-// Aligned like `hledger print`. No trailing blank line: Termux's stdin already adds one.
+// Aligned like `hledger print`. The leading newline leaves a blank line after the previous entry.
 fun formatEntry(date: LocalDate, payee: String, account: String, amount: BigDecimal, currency: String): String {
     val postings = listOf(CASH_ACCOUNT to amount.negate().toPlainString(), account to amount.toPlainString())
     val accountWidth = postings.maxOf { it.first.length } + 2
     val amountWidth = postings.maxOf { it.second.length }
     val lines = postings.map { (name, value) -> "    ${name.padEnd(accountWidth)}${value.padStart(amountWidth)} $currency" }
-    return "$date $payee\n" + lines.joinToString("\n") + "\n"
+    return "\n$date $payee\n" + lines.joinToString("\n") + "\n"
 }
 
 suspend fun appendEntry(context: Context, entry: String) =
