@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -16,10 +15,6 @@ import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material3.Button
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ExposedDropdownMenuAnchorType
-import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SnackbarHostState
@@ -32,6 +27,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusDirection
@@ -39,144 +35,65 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
-import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import dev.ghjkl.tally.data.AppSettings
-import dev.ghjkl.tally.termux.SH_PATH
-import dev.ghjkl.tally.termux.TermuxRunner
-import dev.ghjkl.tally.ui.rankByFuzzyScore
+import dev.ghjkl.tally.termux.CASH_ACCOUNT
+import dev.ghjkl.tally.termux.appendEntry
+import dev.ghjkl.tally.termux.formatEntry
+import dev.ghjkl.tally.ui.AccountSearchField
 import dev.ghjkl.tally.ui.rememberRunCommandPermission
 import kotlinx.coroutines.launch
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneOffset
-import java.util.Locale
 
-// DatePicker operates in UTC internally to avoid timezone date-shifting — convert
-// through ZoneOffset.UTC specifically, not the system default zone, both ways.
-private fun LocalDate.toUtcEpochMillis(): Long = atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
-private fun Long.toLocalDateUtc(): LocalDate = Instant.ofEpochMilli(this).atZone(ZoneOffset.UTC).toLocalDate()
-
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AddEntryScreen(snackbarHostState: SnackbarHostState) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val permission = rememberRunCommandPermission()
     val focusManager = LocalFocusManager.current
-    val keyboardController = LocalSoftwareKeyboardController.current
-    val amountFocusRequester = remember { FocusRequester() }
-    val dateFieldInteractionSource = remember { MutableInteractionSource() }
+    val amountFocus = remember { FocusRequester() }
 
-    var date by remember { mutableStateOf(LocalDate.now()) }
-    var showDatePicker by remember { mutableStateOf(false) }
-    var amount by remember { mutableStateOf("") }
-    var currency by remember { mutableStateOf(AppSettings.defaultCurrency) }
-    var payee by remember { mutableStateOf("") }
-    var account by remember { mutableStateOf("") }
-    var accountMenuExpanded by remember { mutableStateOf(false) }
-    var status by remember { mutableStateOf("") }
-    var isSaving by remember { mutableStateOf(false) }
-    var amountError by remember { mutableStateOf(false) }
-    var payeeError by remember { mutableStateOf(false) }
-    var currencyError by remember { mutableStateOf(false) }
+    var date by rememberSaveable { mutableStateOf(LocalDate.now()) }
+    var amount by rememberSaveable { mutableStateOf("") }
+    var payee by rememberSaveable { mutableStateOf("") }
+    var account by rememberSaveable { mutableStateOf("") }
+    var currency by rememberSaveable { mutableStateOf(AppSettings.defaultCurrency) }
+    var submitted by rememberSaveable { mutableStateOf(false) }
+    var saving by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf("") }
 
-    val accountMatches = remember(account, AppSettings.expenseAccounts) {
-        rankByFuzzyScore(account, AppSettings.expenseAccounts, limit = 8)
-    }
+    val parsedAmount = amount.trim().replace(',', '.').toBigDecimalOrNull()
+    val resolvedAccount = account.trim().ifBlank { AppSettings.lastUsedAccount }
+    val valid = parsedAmount != null && payee.isNotBlank() && resolvedAccount.isNotBlank() && currency.isNotBlank()
 
-    LaunchedEffect(Unit) { amountFocusRequester.requestFocus() }
+    LaunchedEffect(Unit) { amountFocus.requestFocus() }
 
-    LaunchedEffect(dateFieldInteractionSource) {
-        dateFieldInteractionSource.interactions.collect { interaction ->
-            if (interaction is PressInteraction.Release) showDatePicker = true
-        }
-    }
-
-    fun save() {
+    fun save() = permission.runOrRequest {
         focusManager.clearFocus()
-        keyboardController?.hide()
-        if (!permission.granted) {
-            permission.request()
-            return
-        }
-        val amountValue = amount.trim().toDoubleOrNull()
-        val resolvedAccount = account.trim().ifBlank { AppSettings.lastUsedAccount }
-
-        amountError = amountValue == null
-        payeeError = payee.isBlank()
-        currencyError = currency.isBlank()
-
-        if (amountError || payeeError || currencyError || resolvedAccount.isBlank()) {
-            status = if (resolvedAccount.isBlank()) {
-                "Fill in the required fields (and an account, unless you have a " +
-                    "previously-used one to fall back on)."
-            } else {
-                ""
-            }
-            scope.launch { snackbarHostState.showSnackbar("Please fill in the required fields") }
-            return
-        }
-        isSaving = true
-        status = ""
+        submitted = true
+        if (!valid) return@runOrRequest
+        val entry = formatEntry(date, payee.trim(), resolvedAccount, parsedAmount.toPlainString(), currency.trim())
+        saving = true
         scope.launch {
-            val amountText = String.format(Locale.US, "%10.2f %s", amountValue, currency)
-            val negativeAmountText = String.format(Locale.US, "%10.2f %s", -amountValue!!, currency)
-            // Pad accounts to a fixed column so amounts line up regardless of account name
-            // length, with a guaranteed minimum 2-space gap hledger requires.
-            val assetField = "Assets:Cash".padEnd(28)
-            val accountField = (resolvedAccount + "  ").padEnd(28)
-            val entry = buildString {
-                append("$date $payee\n")
-                append("    $assetField$negativeAmountText\n")
-                append("    $accountField$amountText\n")
-                // No extra trailing blank line here — Termux's RUN_COMMAND_STDIN already
-                // adds one, so adding our own doubled up the gap between entries.
+            val result = appendEntry(context, entry)
+            saving = false
+            if (!result.ok) {
+                error = result.errorText()
+                return@launch
             }
-            val result = TermuxRunner.run(
-                context,
-                SH_PATH,
-                // Deliberately unquoted: lets sh expand a leading `~` in the configured path.
-                listOf("-c", "cat >> ${AppSettings.manualJournalPath}"),
-                stdin = entry,
-            )
-            isSaving = false
-            if (result.exitCode == 0) {
-                AppSettings.updateLastUsedAccount(resolvedAccount)
-                date = LocalDate.now()
-                amount = ""
-                payee = ""
-                account = ""
-                status = ""
-                amountError = false
-                payeeError = false
-                currencyError = false
-                snackbarHostState.showSnackbar("Entry added")
-                amountFocusRequester.requestFocus()
-            } else {
-                status = "Failed (exit ${result.exitCode}): " +
-                    result.errmsg.ifBlank { result.stderr.ifBlank { "unknown error" } }
-            }
-        }
-    }
-
-    if (showDatePicker) {
-        val datePickerState = rememberDatePickerState(initialSelectedDateMillis = date.toUtcEpochMillis())
-        DatePickerDialog(
-            onDismissRequest = { showDatePicker = false },
-            confirmButton = {
-                TextButton(onClick = {
-                    datePickerState.selectedDateMillis?.let { date = it.toLocalDateUtc() }
-                    showDatePicker = false
-                }) { Text("OK") }
-            },
-            dismissButton = {
-                TextButton(onClick = { showDatePicker = false }) { Text("Cancel") }
-            },
-        ) {
-            DatePicker(state = datePickerState)
+            AppSettings.lastUsedAccount = resolvedAccount
+            date = LocalDate.now()
+            amount = ""
+            payee = ""
+            account = ""
+            submitted = false
+            error = ""
+            amountFocus.requestFocus()
+            snackbarHostState.showSnackbar("Entry added")
         }
     }
 
@@ -187,113 +104,104 @@ fun AddEntryScreen(snackbarHostState: SnackbarHostState) {
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        OutlinedTextField(
-            value = date.toString(),
-            onValueChange = {},
-            readOnly = true,
-            label = { Text("Date") },
-            trailingIcon = { Icon(Icons.Default.DateRange, contentDescription = "Pick date") },
-            singleLine = true,
-            // Reports its own press events here instead of accepting typed input — this is
-            // the documented way to make a whole read-only field act as a tap target.
-            interactionSource = dateFieldInteractionSource,
-            modifier = Modifier.fillMaxWidth(),
-        )
-        OutlinedTextField(
+        DateField(date, onDateChange = { date = it })
+        RequiredField(
             value = amount,
-            onValueChange = { amount = it; amountError = false },
-            label = { Text("Amount") },
-            isError = amountError,
-            supportingText = if (amountError) { { Text("Required") } } else null,
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal, imeAction = ImeAction.Next),
-            keyboardActions = KeyboardActions(onNext = { focusManager.moveFocus(FocusDirection.Down) }),
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth().focusRequester(amountFocusRequester),
+            onValueChange = { amount = it },
+            label = "Amount",
+            showError = submitted && parsedAmount == null,
+            keyboardType = KeyboardType.Decimal,
+            modifier = Modifier.focusRequester(amountFocus),
         )
-        OutlinedTextField(
-            value = payee,
-            onValueChange = { payee = it; payeeError = false },
-            label = { Text("Payee") },
-            isError = payeeError,
-            supportingText = if (payeeError) { { Text("Required") } } else null,
-            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
-            keyboardActions = KeyboardActions(onNext = { focusManager.moveFocus(FocusDirection.Down) }),
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth(),
+        RequiredField(payee, { payee = it }, "Payee", showError = submitted && payee.isBlank())
+        val lastUsed = AppSettings.lastUsedAccount
+        // Without a label, the last-used account stays visible as the placeholder.
+        AccountSearchField(
+            query = account,
+            onQueryChange = { account = it },
+            accounts = AppSettings.expenseAccounts,
+            onPick = {
+                account = it
+                focusManager.moveFocus(FocusDirection.Next)
+            },
+            label = "Expense account".takeIf { lastUsed.isBlank() },
+            placeholder = lastUsed.ifBlank { null },
+            supportingText = "Required".takeIf { submitted && resolvedAccount.isBlank() },
+            isError = submitted && resolvedAccount.isBlank(),
         )
-        ExposedDropdownMenuBox(
-            expanded = accountMenuExpanded && accountMatches.isNotEmpty(),
-            onExpandedChange = { accountMenuExpanded = it },
-        ) {
-            OutlinedTextField(
-                value = account,
-                onValueChange = {
-                    account = it
-                    accountMenuExpanded = true
-                },
-                // Once there's a real last-used account, drop the label entirely so the
-                // placeholder (always visible while empty, shown in a muted colour by
-                // Material3) can show that real value instead of a floating "label".
-                label = if (AppSettings.lastUsedAccount.isBlank()) {
-                    { Text("Expense account") }
-                } else {
-                    null
-                },
-                placeholder = if (AppSettings.lastUsedAccount.isNotBlank()) {
-                    { Text(AppSettings.lastUsedAccount) }
-                } else {
-                    null
-                },
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
-                keyboardActions = KeyboardActions(onNext = {
-                    accountMenuExpanded = false
-                    focusManager.moveFocus(FocusDirection.Down)
-                }),
-                singleLine = true,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .menuAnchor(ExposedDropdownMenuAnchorType.PrimaryEditable, enabled = true),
-            )
-            ExposedDropdownMenu(
-                expanded = accountMenuExpanded && accountMatches.isNotEmpty(),
-                onDismissRequest = { accountMenuExpanded = false },
-            ) {
-                accountMatches.forEach { match ->
-                    DropdownMenuItem(
-                        text = { Text(match) },
-                        onClick = {
-                            account = match
-                            accountMenuExpanded = false
-                            focusManager.moveFocus(FocusDirection.Down)
-                        },
-                    )
-                }
-            }
-        }
-        OutlinedTextField(
+        RequiredField(
             value = currency,
-            onValueChange = { currency = it; currencyError = false },
-            label = { Text("Currency") },
-            isError = currencyError,
-            supportingText = if (currencyError) { { Text("Required") } } else null,
-            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-            keyboardActions = KeyboardActions(onDone = {
-                focusManager.clearFocus()
-                keyboardController?.hide()
-            }),
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth(),
+            onValueChange = { currency = it },
+            label = "Currency",
+            showError = submitted && currency.isBlank(),
+            imeAction = ImeAction.Done,
         )
-        Text("From: Assets:Cash")
-        Button(
-            onClick = ::save,
-            enabled = !isSaving,
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            Text(if (isSaving) "Saving…" else "Add entry")
+        Text("From: $CASH_ACCOUNT")
+        Button(onClick = ::save, enabled = !saving, modifier = Modifier.fillMaxWidth()) {
+            Text(if (saving) "Saving…" else "Add entry")
         }
-        if (status.isNotBlank()) {
-            Text(status)
+        if (error.isNotBlank()) Text(error)
+    }
+}
+
+@Composable
+private fun RequiredField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    label: String,
+    showError: Boolean,
+    modifier: Modifier = Modifier,
+    keyboardType: KeyboardType = KeyboardType.Text,
+    imeAction: ImeAction = ImeAction.Next,
+) {
+    OutlinedTextField(
+        value = value,
+        onValueChange = onValueChange,
+        label = { Text(label) },
+        isError = showError,
+        supportingText = if (showError) { { Text("Required") } } else null,
+        keyboardOptions = KeyboardOptions(keyboardType = keyboardType, imeAction = imeAction),
+        singleLine = true,
+        modifier = modifier.fillMaxWidth(),
+    )
+}
+
+// DatePicker works in UTC millis; converting through UTC keeps the day from shifting.
+private fun LocalDate.toUtcMillis() = atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
+private fun Long.toUtcDate() = Instant.ofEpochMilli(this).atZone(ZoneOffset.UTC).toLocalDate()
+
+@Composable
+private fun DateField(date: LocalDate, onDateChange: (LocalDate) -> Unit) {
+    var showPicker by remember { mutableStateOf(false) }
+    val interactions = remember { MutableInteractionSource() }
+    LaunchedEffect(interactions) {
+        interactions.interactions.collect { if (it is PressInteraction.Release) showPicker = true }
+    }
+
+    OutlinedTextField(
+        value = date.toString(),
+        onValueChange = {},
+        readOnly = true,
+        label = { Text("Date") },
+        trailingIcon = { Icon(Icons.Default.DateRange, contentDescription = "Pick date") },
+        singleLine = true,
+        interactionSource = interactions,
+        modifier = Modifier.fillMaxWidth(),
+    )
+
+    if (showPicker) {
+        val state = rememberDatePickerState(initialSelectedDateMillis = date.toUtcMillis())
+        DatePickerDialog(
+            onDismissRequest = { showPicker = false },
+            confirmButton = {
+                TextButton(onClick = {
+                    state.selectedDateMillis?.let { onDateChange(it.toUtcDate()) }
+                    showPicker = false
+                }) { Text("OK") }
+            },
+            dismissButton = { TextButton(onClick = { showPicker = false }) { Text("Cancel") } },
+        ) {
+            DatePicker(state = state)
         }
     }
 }

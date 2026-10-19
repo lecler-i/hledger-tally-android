@@ -25,8 +25,10 @@ through the actual parser.
 - **Infos**: your real `Assets:Cash` balance, this/last month's `Expenses`
   (sorted highest-first, tap to cycle through depth 2→3→4), and the recent
   entries from the scratch journal — all fetched live from Termux's hledger.
-- **Config**: the scratch journal path, default entry currency, and the
-  reporting currency (`-X`) used for the Infos page's converted balances.
+- **Config**: theme, the scratch journal path, default entry currency, the
+  reporting currency (`-X`) used for the Infos page's converted balances,
+  refreshing the cached `Expenses` accounts, and accounts to hide from the
+  Infos page's breakdowns.
 
 ## One-time phone setup
 
@@ -56,14 +58,19 @@ Building from the command line requires the Android SDK (`compileSdk`/
 
 ```
 app/src/main/java/dev/ghjkl/tally/
-├── MainActivity.kt          — bottom-nav Scaffold, screen switching
-├── data/AppSettings.kt       — settings + in-memory caches (SharedPreferences)
+├── MainActivity.kt            — bottom-nav Scaffold, screen switching
+├── data/
+│   ├── AppSettings.kt         — settings (SharedPreferences, as Compose state)
+│   └── Infos.kt               — Infos page content, kept across tab switches
 ├── termux/
-│   ├── TermuxRunner.kt       — sends RUN_COMMAND, awaits the result via a
-│   │                           PendingIntent-triggered Service
-│   └── TermuxCommands.kt     — the actual hledger invocations + parsing
+│   ├── TermuxRunner.kt        — sends RUN_COMMAND, awaits the result via a
+│   │                            PendingIntent-triggered Service
+│   └── Hledger.kt             — the hledger invocations + output parsing
 └── ui/
-    ├── RunCommandPermission.kt — shared permission-request helper
+    ├── AccountSearchField.kt  — fuzzy-matched account dropdown
+    ├── FuzzySearch.kt
+    ├── RunCommandPermission.kt
+    ├── theme/Theme.kt
     └── screens/
         ├── AddEntryScreen.kt
         ├── InfosScreen.kt

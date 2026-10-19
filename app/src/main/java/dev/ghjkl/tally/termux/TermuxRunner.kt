@@ -5,30 +5,40 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.os.IBinder
-import android.util.Log
-import androidx.core.content.ContextCompat
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlin.time.Duration.Companion.seconds
 
-private const val TAG = "HledgerBS"
+private const val EXTRA_ID = "dev.ghjkl.tally.REQUEST_ID"
+private val TIMEOUT = 30.seconds
 
 data class TermuxResult(
     val stdout: String,
     val stderr: String,
     val exitCode: Int,
     val errmsg: String,
-)
+) {
+    val ok get() = exitCode == 0 && errmsg.isBlank()
+
+    fun errorText(): String {
+        val details = listOf(errmsg, stderr.ifBlank { stdout }).filter { it.isNotBlank() }
+            .ifEmpty { listOf("No output: check allow-external-apps and the RUN_COMMAND permission.") }
+        return (listOf("Exit code $exitCode") + details).joinToString("\n\n")
+    }
+
+    companion object {
+        fun failure(message: String) = TermuxResult("", "", -1, message)
+    }
+}
 
 /**
- * Sends a RUN_COMMAND intent to Termux's RunCommandService and awaits the result,
- * which Termux delivers back via a PendingIntent pointing at [TermuxResultService].
- *
- * Requires: Termux installed, `allow-external-apps=true` in
- * ~/.termux/termux.properties, and this app holding the
- * com.termux.permission.RUN_COMMAND permission.
+ * Runs commands through Termux's RUN_COMMAND intent. Termux sends each result back
+ * to [TermuxResultService] through a PendingIntent tagged with the request id.
  */
 object TermuxRunner {
-
-    private var pending: CompletableDeferred<TermuxResult>? = null
+    // Only touched from the main thread.
+    private val pending = mutableMapOf<Int, CompletableDeferred<TermuxResult>>()
+    private var nextId = 0
 
     suspend fun run(
         context: Context,
@@ -37,52 +47,42 @@ object TermuxRunner {
         stdin: String? = null,
     ): TermuxResult {
         val app = context.applicationContext
+        val id = ++nextId
         val deferred = CompletableDeferred<TermuxResult>()
-        pending = deferred
-
-        val resultIntent = Intent(app, TermuxResultService::class.java)
-        val pendingIntent = PendingIntent.getService(
-            app,
-            1001,
-            resultIntent,
-            PendingIntent.FLAG_MUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
-        )
-
-        val runIntent = Intent().apply {
-            setClassName("com.termux", "com.termux.app.RunCommandService")
-            action = "com.termux.RUN_COMMAND"
-            putExtra("com.termux.RUN_COMMAND_PATH", executable)
-            putExtra("com.termux.RUN_COMMAND_ARGUMENTS", args.toTypedArray())
-            putExtra("com.termux.RUN_COMMAND_BACKGROUND", true)
-            putExtra("com.termux.RUN_COMMAND_PENDING_INTENT", pendingIntent)
-            if (stdin != null) {
-                putExtra("com.termux.RUN_COMMAND_STDIN", stdin)
+        pending[id] = deferred
+        try {
+            // Termux's RunCommandService goes foreground immediately; plain startService()
+            // is blocked while Termux is in the background.
+            val started = runCatching { app.startForegroundService(runIntent(app, id, executable, args, stdin)) }
+            if (started.getOrNull() == null) {
+                val reason = started.exceptionOrNull()?.message ?: "is it installed?"
+                return TermuxResult.failure("Could not start Termux: $reason")
             }
+            return withTimeoutOrNull(TIMEOUT) { deferred.await() }
+                ?: TermuxResult.failure("Timed out waiting for Termux")
+        } finally {
+            pending.remove(id)
         }
-        Log.d(TAG, "sending RUN_COMMAND: $executable ${args.joinToString(" ")}")
-        // Termux's RunCommandService promotes itself to a foreground service right
-        // after onStartCommand(); startService() doesn't get the background-start
-        // exemption that requires, so Android blocks it with
-        // BackgroundServiceStartNotAllowedException once Termux itself isn't foreground.
-        ContextCompat.startForegroundService(app, runIntent)
-
-        val result = deferred.await()
-        Log.d(
-            TAG,
-            "result exitCode=${result.exitCode} errmsg=${result.errmsg} " +
-                "stdout(${result.stdout.length}ch)=${result.stdout.take(500)} " +
-                "stderr(${result.stderr.length}ch)=${result.stderr.take(500)}",
-        )
-        return result
     }
 
-    internal fun deliver(result: TermuxResult) {
-        pending?.complete(result)
-        pending = null
+    internal fun deliver(id: Int, result: TermuxResult) {
+        pending[id]?.complete(result)
+    }
+
+    private fun runIntent(app: Context, id: Int, executable: String, args: List<String>, stdin: String?): Intent {
+        val resultIntent = Intent(app, TermuxResultService::class.java).putExtra(EXTRA_ID, id)
+        // Mutable so Termux can add its result bundle.
+        val pendingIntent = PendingIntent.getService(app, id, resultIntent, PendingIntent.FLAG_MUTABLE)
+        return Intent("com.termux.RUN_COMMAND")
+            .setClassName("com.termux", "com.termux.app.RunCommandService")
+            .putExtra("com.termux.RUN_COMMAND_PATH", executable)
+            .putExtra("com.termux.RUN_COMMAND_ARGUMENTS", args.toTypedArray())
+            .putExtra("com.termux.RUN_COMMAND_BACKGROUND", true)
+            .putExtra("com.termux.RUN_COMMAND_PENDING_INTENT", pendingIntent)
+            .apply { if (stdin != null) putExtra("com.termux.RUN_COMMAND_STDIN", stdin) }
     }
 }
 
-/** Tiny no-UI service: Termux starts it via our PendingIntent to hand back stdout/stderr/exit code. */
 class TermuxResultService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -91,10 +91,11 @@ class TermuxResultService : Service() {
         val result = TermuxResult(
             stdout = bundle?.getString("stdout").orEmpty(),
             stderr = bundle?.getString("stderr").orEmpty(),
-            exitCode = bundle?.getInt("exitCode") ?: -1,
+            // Termux leaves exitCode out when the command never ran.
+            exitCode = bundle?.getInt("exitCode", -1) ?: -1,
             errmsg = bundle?.getString("errmsg").orEmpty(),
         )
-        TermuxRunner.deliver(result)
+        intent?.let { TermuxRunner.deliver(it.getIntExtra(EXTRA_ID, 0), result) }
         stopSelf(startId)
         return START_NOT_STICKY
     }

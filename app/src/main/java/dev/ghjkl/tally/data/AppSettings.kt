@@ -2,133 +2,46 @@ package dev.ghjkl.tally.data
 
 import android.content.Context
 import android.content.SharedPreferences
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
+import kotlin.properties.ReadWriteProperty
+import kotlin.reflect.KProperty
 
-/**
- * App-wide settings + small caches, backed by SharedPreferences. `manualJournalPath`
- * is a shell string Termux's `sh` interprets directly (so `~` expansion works) — kept
- * unquoted wherever a command is built with it, deliberately.
- */
-enum class ThemeMode { SYSTEM, LIGHT, DARK }
+enum class ThemeMode(val label: String) {
+    SYSTEM("Follow system"),
+    LIGHT("Light"),
+    DARK("Dark"),
+}
 
+/** Settings saved in SharedPreferences and exposed as Compose state. */
 object AppSettings {
-    private const val PREFS_NAME = "hledgerbs_settings"
-    private const val KEY_MANUAL_JOURNAL_PATH = "manual_journal_path"
-    private const val KEY_DEFAULT_CURRENCY = "default_currency"
-    private const val KEY_SHOW_IN_CURRENCY = "show_in_currency"
-    private const val KEY_LAST_USED_ACCOUNT = "last_used_account"
-    private const val KEY_EXPENSE_ACCOUNTS = "expense_accounts"
-    private const val KEY_EXCLUDED_EXPENSE_ACCOUNTS = "excluded_expense_accounts"
-    private const val KEY_THEME_MODE = "theme_mode"
-
-    const val DEFAULT_MANUAL_JOURNAL_PATH = "~/storage/finance/journals/phone-manual.journal"
-    const val DEFAULT_CURRENCY = "INR"
-    const val DEFAULT_SHOW_IN_CURRENCY = "EUR"
-
-    var manualJournalPath by mutableStateOf(DEFAULT_MANUAL_JOURNAL_PATH)
-        private set
-    var themeMode by mutableStateOf(ThemeMode.SYSTEM)
-        private set
-    var defaultCurrency by mutableStateOf(DEFAULT_CURRENCY)
-        private set
-    // Reporting/display currency for the Infos page's converted balances (-X), distinct
-    // from defaultCurrency (which is the per-entry transaction currency on Add Entry).
-    var showInCurrency by mutableStateOf(DEFAULT_SHOW_IN_CURRENCY)
-        private set
-    var lastUsedAccount by mutableStateOf("")
-        private set
-    var expenseAccounts by mutableStateOf<List<String>>(emptyList())
-        private set
-    // Account prefixes to hide from the Infos page's Expenses breakdowns (e.g. Taxes) —
-    // excluded via "not:acct:" in the balance queries, not removed from the ledger itself.
-    var excludedExpenseAccounts by mutableStateOf<List<String>>(emptyList())
-        private set
-
-    // Not persisted — always re-fetched fresh (kicked off once at app start, and again on
-    // pull-to-refresh), so there's no point caching stale balances across app restarts.
-    var cashBalanceOutput by mutableStateOf("Pull down to load…")
-    var currentMonthExpensesOutput by mutableStateOf("Pull down to load…")
-    var lastMonthExpensesOutput by mutableStateOf("Pull down to load…")
-    var transactionsOutput by mutableStateOf("Pull down to load…")
-    var isLoadingInfos by mutableStateOf(false)
-
-    // Tap-to-cycle depth (2 -> 3 -> 4 -> 2) for the two month-expense breakdowns,
-    // independent of each other. Resets to 2 on app restart — not persisted.
-    var currentMonthDepth by mutableStateOf(2)
-    var lastMonthDepth by mutableStateOf(2)
-
-    fun cycleCurrentMonthDepth() {
-        currentMonthDepth = if (currentMonthDepth >= 4) 2 else currentMonthDepth + 1
-    }
-
-    fun cycleLastMonthDepth() {
-        lastMonthDepth = if (lastMonthDepth >= 4) 2 else lastMonthDepth + 1
-    }
-
-    private var prefs: SharedPreferences? = null
+    private lateinit var prefs: SharedPreferences
 
     fun init(context: Context) {
-        if (prefs != null) return
-        val p = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        prefs = p
-        manualJournalPath = p.getString(KEY_MANUAL_JOURNAL_PATH, DEFAULT_MANUAL_JOURNAL_PATH)
-            ?: DEFAULT_MANUAL_JOURNAL_PATH
-        defaultCurrency = p.getString(KEY_DEFAULT_CURRENCY, DEFAULT_CURRENCY) ?: DEFAULT_CURRENCY
-        showInCurrency = p.getString(KEY_SHOW_IN_CURRENCY, DEFAULT_SHOW_IN_CURRENCY)
-            ?: DEFAULT_SHOW_IN_CURRENCY
-        lastUsedAccount = p.getString(KEY_LAST_USED_ACCOUNT, "") ?: ""
-        expenseAccounts = p.getString(KEY_EXPENSE_ACCOUNTS, "")
-            ?.lines()
-            ?.filter { it.isNotBlank() }
-            ?: emptyList()
-        excludedExpenseAccounts = p.getString(KEY_EXCLUDED_EXPENSE_ACCOUNTS, "")
-            ?.lines()
-            ?.filter { it.isNotBlank() }
-            ?: emptyList()
-        themeMode = p.getString(KEY_THEME_MODE, null)
-            ?.let { runCatching { ThemeMode.valueOf(it) }.getOrNull() }
-            ?: ThemeMode.SYSTEM
+        prefs = context.getSharedPreferences("settings", Context.MODE_PRIVATE)
     }
 
-    fun updateThemeMode(mode: ThemeMode) {
-        themeMode = mode
-        prefs?.edit()?.putString(KEY_THEME_MODE, mode.name)?.apply()
-    }
+    var themeMode by pref("theme_mode", ThemeMode.SYSTEM, { s -> ThemeMode.entries.find { it.name == s } }, { it.name })
+    var manualJournalPath by stringPref("manual_journal_path", "~/storage/finance/journals/phone-manual.journal")
+    var defaultCurrency by stringPref("default_currency", "INR")
+    var showInCurrency by stringPref("show_in_currency", "EUR")
+    var lastUsedAccount by stringPref("last_used_account", "")
+    var expenseAccounts by listPref("expense_accounts")
+    var excludedExpenseAccounts by listPref("excluded_expense_accounts")
 
-    fun updateManualJournalPath(path: String) {
-        manualJournalPath = path
-        prefs?.edit()?.putString(KEY_MANUAL_JOURNAL_PATH, path)?.apply()
-    }
+    private fun stringPref(key: String, default: String) = pref(key, default, { it }, { it })
 
-    fun updateDefaultCurrency(currency: String) {
-        defaultCurrency = currency
-        prefs?.edit()?.putString(KEY_DEFAULT_CURRENCY, currency)?.apply()
-    }
+    private fun listPref(key: String) =
+        pref(key, emptyList(), { s -> s.lines().filter { it.isNotBlank() } }, { it.joinToString("\n") })
 
-    fun updateShowInCurrency(currency: String) {
-        showInCurrency = currency
-        prefs?.edit()?.putString(KEY_SHOW_IN_CURRENCY, currency)?.apply()
-    }
+    private fun <T> pref(key: String, default: T, decode: (String) -> T?, encode: (T) -> String) =
+        object : ReadWriteProperty<Any?, T> {
+            private val state by lazy { mutableStateOf(prefs.getString(key, null)?.let(decode) ?: default) }
 
-    fun updateLastUsedAccount(account: String) {
-        lastUsedAccount = account
-        prefs?.edit()?.putString(KEY_LAST_USED_ACCOUNT, account)?.apply()
-    }
+            override fun getValue(thisRef: Any?, property: KProperty<*>) = state.value
 
-    fun updateExpenseAccounts(accounts: List<String>) {
-        expenseAccounts = accounts
-        prefs?.edit()?.putString(KEY_EXPENSE_ACCOUNTS, accounts.joinToString("\n"))?.apply()
-    }
-
-    fun toggleExcludedExpenseAccount(account: String) {
-        val updated = if (account in excludedExpenseAccounts) {
-            excludedExpenseAccounts - account
-        } else {
-            excludedExpenseAccounts + account
+            override fun setValue(thisRef: Any?, property: KProperty<*>, value: T) {
+                state.value = value
+                prefs.edit().putString(key, encode(value)).apply()
+            }
         }
-        excludedExpenseAccounts = updated
-        prefs?.edit()?.putString(KEY_EXCLUDED_EXPENSE_ACCOUNTS, updated.joinToString("\n"))?.apply()
-    }
 }
