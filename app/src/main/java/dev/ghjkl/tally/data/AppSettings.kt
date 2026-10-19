@@ -21,7 +21,7 @@ object AppSettings {
     }
 
     var themeMode by pref("theme_mode", ThemeMode.SYSTEM, { s -> ThemeMode.entries.find { it.name == s } }, { it.name })
-    var manualJournalPath by stringPref("manual_journal_path", "~/storage/finance/journals/phone-manual.journal")
+    var manualJournalPath by stringPref("manual_journal_path", "/storage/emulated/0/finance/journals/phone-manual.journal")
     var defaultCurrency by stringPref("default_currency", "INR")
     var showInCurrency by stringPref("show_in_currency", "EUR")
     var lastUsedAccount by stringPref("last_used_account", "")
